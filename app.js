@@ -1,13 +1,16 @@
 // web.js
 var express = require("express");
 var logfmt = require("logfmt");
-var app = express();
-app.use(logfmt.requestLogger());
 var fs = require('fs');
-var Client = require('node-rest-client').Client;
-client = new Client();
 var moment = require('moment');
 var guid = require('guid');
+var Client = require('node-rest-client').Client;
+
+var app = express();
+app.use(logfmt.requestLogger());
+
+
+client = new Client();
 
 var showAsBusy = false;
 
@@ -28,42 +31,58 @@ app.get('/', function(req, res) {
 
 app.get('/cal', function(req, res) {
 
-  // Check how old the ics file is
-  fs.stat(icsFileName, function(err, stats) {
-    var fileModifiedTime = moment(stats.mtime);
-    var diff = moment().diff(fileModifiedTime, 'days');
+  // Check if ics file exists.
+  if (fs.existsSync(icsFileName)) {
+    // Check how old the ics file is
+    fs.stat(icsFileName, function(err, stats) {
+      var fileModifiedTime = moment(stats.mtime);
+      var icsFileAge = moment().diff(fileModifiedTime, 'days');
+      console.log('File is ' + icsFileAge + ' days old');
+      // if older than a day
+      if (icsFileAge > 0) {
+        // Download JSON fixture data
+        client.get(chelseaCalJSONUrl, function(data, response) {
+          console.log('Downloading fixture API');
+          // parse JSON into ics format
+          var icsFileData = json2ics(data);
 
-    // if older than a day
-    if (diff > 0) {
-      // Download JSON fixture data
-      client.get(chelseaCalJSONUrl, function(data, response) {
-        // parse JSON into ics format
-        var icsFileData = json2ics(data);
+          // write ics file
+          fs.writeFile(icsFileName, icsFileData, function(err) {
+            if (err) {
+              console.log(err);
+            } else {
+              console.log("The ics file was saved!");
+              console.log('Sending ics file to browser');
+              res.download(icsFileName);
+            } //else (err)
+          }); //fs.writeFile ()
+        }); //client.get()
+      } // if (icsFileAge)
+      else {
+        console.log('Sending ics file to browser');
+        res.download(icsFileName);
+      } // else (icsfileAge)
+    }); // fs.stat
+  } // if (fs.exists())
+  else {
+    client.get(chelseaCalJSONUrl, function(data, response) {
+      console.log('Downloading fixture API');
+      // parse JSON into ics format
+      var icsFileData = json2ics(data);
 
-        // write ics file
-        fs.writeFile(icsFileName, icsFileData, function(err) {
-          if (err) {
-            console.log(err);
-          } else {
-            console.log("The ics file was saved!");
-          }
-        }); //fs.writeFile ()
-      }); //client.get()
-    } // if
-  }); // fs.stat
-
-
-
-  var file = icsFileName;
-  res.setHeader('Content-disposition', 'attachment; filename=' + file)
-  res.setHeader('Content-Length', file.size)
-  res.setHeader('Content-type', 'text/calendar')
-  res.attachment(file);
-
-
+      // write ics file
+      fs.writeFile(icsFileName, icsFileData, function(err) {
+        if (err) {
+          console.log(err);
+        } else {
+          console.log("The ics file was saved!");
+          console.log('Sending ics file to browser');
+          res.download(icsFileName);
+        } //else (err)
+      }); //fs.writeFile ()
+    }); //client.get()
+  } // else(fs.exists())
 }); // app.get()
-
-
 
 
 function json2ics(data) {
